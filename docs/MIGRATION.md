@@ -105,35 +105,22 @@ tested, the upgrade dimension simply does not exist.
 ## 3. Behaviour deliberately removed
 
 The old contract set exposed **145 entrypoints** (100 stream, 16 factory, 29
-governance). v1 exposes **17** core entrypoints plus **8 delegation entrypoints**
+governance). v1 exposes **30** core entrypoints plus **8 delegation entrypoints**
 (`grant_delegate`, `revoke_delegate`, and the six `delegate_*` variants) for a
-total of **25**. The delegates are gated on per-operation grants
+total of **38**. The delegates are gated on per-operation grants
 (`docs/delegation-revocation.md`) and do not change the core surface the
 renames table below maps.
 
-The 17th core entrypoint is `create_stream_with_curve`, added by #1815. The
-rewrite landed 16; the curve entry point is a later, purely additive extension
-of `create_stream` — same authorization, same validation, same deposit pull —
-that takes the release shape as one extra argument. `create_stream` keeps its
-signature and its linear arithmetic, so the renames table below is unaffected.
-Grouped by why:
-governance). v1 exposes **21** core entrypoints plus **8 delegation entrypoints**
-(`grant_delegate`, `revoke_delegate`, and the six `delegate_*` variants) for a
-total of **29**. The delegates are gated on per-operation grants
-governance). v1 exposes **17** core entrypoints plus **8 delegation entrypoints**
-(`grant_delegate`, `revoke_delegate`, and the six `delegate_*` variants) for a
-total of **25**. `batch_cancel` joined the core surface after this document was
-written: a programme is wound down in one call, with a member that cannot be
-cancelled reported by its index in the submitted vector. The delegates are gated
-on per-operation grants
-total of **25**. The delegates are gated on per-operation grants
-(`docs/delegation-revocation.md`) and do not change the core surface the
-renames table below maps. The core count includes the five contract-level
+The core count of 30 comprises: the 16 landed by the v1 rewrite, plus
+`create_stream_with_curve` (#1815), `create_stream_with_cliff_mode`,
+`batch_cancel`, the five contract-level
 emergency-halt entry points added in #1818 (`set_halt_operator`, `halt`,
-`resume_contract`, `halted`, `halt_operator`) — see
-[Emergency halt](ABI.md#emergency-halt). They are not a revival of the removed
-admin pause: the halt is opt-in and one-shot, and a deployment that never
-installs an operator has no admin and no pause of any kind. Grouped by why:
+`resume_contract`, `halted`, `halt_operator` — see
+[Emergency halt](ABI.md#emergency-halt)), `reclaim_dust`, `withdraw_to`,
+`batch_withdraw_to`, `create_stream_via_factory`, `batch_create`,
+`batch_extend_ttl`/`extend_stream_ttl`, the `upgradeable` posture view and the read-only views. The halt is
+opt-in and one-shot, not a revival of the removed admin pause: a deployment
+that never installs an operator has no admin and no pause of any kind. Grouped by why:
 
 **Contradicts §6 (no admin, no upgradeability, no fees, no global pause)**
 `init`, `set_admin`, `upgrade`, `version`, `pause_protocol`, `resume_protocol`,

@@ -89,7 +89,7 @@
 use soroban_sdk::{Address, Env};
 
 use crate::error::Error;
-use crate::types::{DataKey, DelegateGrant, ReleaseCurve, Stream, StreamRecord, StreamShares};
+use crate::types::{CliffMode, DataKey, DelegateGrant, ReleaseCurve, Stream, StreamRecord, StreamShares};
 
 /// Nominal Stellar ledger close time, in seconds.
 ///
@@ -289,13 +289,16 @@ pub fn peek_stream(env: &Env, stream_id: u64) -> Result<Stream, Error> {
 }
 
 /// Decode a stream, stitching the frozen v1 [`StreamRecord`] back together with
-/// its [`ReleaseCurve`] side-car.
+/// its [`ReleaseCurve`], [`CliffMode`] and reference side-cars.
 ///
 /// The stored value is the v1 layout ([`StreamRecord`]) — appending a field to
 /// it would make every stream written before curves existed undecodable; see
 /// the type docs. The curve lives under [`DataKey::StreamCurve`] and is written
 /// only for non-linear streams, so a missing entry means
 /// [`ReleaseCurve::Linear`] and decodes exactly as a v1 stream always did.
+/// The same holds for [`DataKey::StreamCliffMode`] (missing means
+/// [`CliffMode::DEFAULT`]) and [`DataKey::StreamReference`] (missing means
+/// `None`).
 fn read_stream(env: &Env, stream_id: u64) -> Result<Stream, Error> {
     let record: StreamRecord = env
         .storage()
@@ -307,7 +310,16 @@ fn read_stream(env: &Env, stream_id: u64) -> Result<Stream, Error> {
         .persistent()
         .get(&DataKey::StreamCurve(stream_id))
         .unwrap_or(ReleaseCurve::Linear);
-    Ok(record.into_stream(curve))
+    let cliff_mode: CliffMode = env
+        .storage()
+        .persistent()
+        .get(&DataKey::StreamCliffMode(stream_id))
+        .unwrap_or(CliffMode::DEFAULT);
+    let reference: Option<soroban_sdk::String> = env
+        .storage()
+        .persistent()
+        .get(&DataKey::StreamReference(stream_id));
+    Ok(record.into_stream(curve, cliff_mode, reference))
 }
 
 /// Write a stream back and bump its TTL.
@@ -333,6 +345,28 @@ pub fn save_stream(env: &Env, stream_id: u64, stream: &Stream) {
         env.storage()
             .persistent()
             .set(&DataKey::StreamCurve(stream_id), &stream.curve);
+    }
+    if stream.cliff_mode == CliffMode::DEFAULT {
+        // No entry for the default mode, mirroring the curve side-car.
+        env.storage()
+            .persistent()
+            .remove(&DataKey::StreamCliffMode(stream_id));
+    } else {
+        env.storage()
+            .persistent()
+            .set(&DataKey::StreamCliffMode(stream_id), &stream.cliff_mode);
+    }
+    match &stream.reference {
+        None => {
+            env.storage()
+                .persistent()
+                .remove(&DataKey::StreamReference(stream_id));
+        }
+        Some(r) => {
+            env.storage()
+                .persistent()
+                .set(&DataKey::StreamReference(stream_id), r);
+        }
     }
     if is_new {
         let current: u64 = env
@@ -361,6 +395,18 @@ pub fn save_stream(env: &Env, stream_id: u64, stream: &Stream) {
         env.storage()
             .persistent()
             .extend_ttl(&DataKey::StreamCurve(stream_id), target, target);
+    }
+    if stream.cliff_mode != CliffMode::DEFAULT {
+        let target = ttl_target_ledgers(env, stream);
+        env.storage()
+            .persistent()
+            .extend_ttl(&DataKey::StreamCliffMode(stream_id), target, target);
+    }
+    if stream.reference.is_some() {
+        let target = ttl_target_ledgers(env, stream);
+        env.storage()
+            .persistent()
+            .extend_ttl(&DataKey::StreamReference(stream_id), target, target);
     }
 }
 
@@ -534,6 +580,10 @@ pub fn load_delegate(env: &Env, stream_id: u64, delegate: &Address) -> Option<De
 // ---------------------------------------------------------------------------
 // Split-stream share allocations
 // ---------------------------------------------------------------------------
+// TODO(#1992): `create_stream_split` / `withdraw_share` entry points are not
+// yet wired to these helpers, so they are currently unused. Keep them (rather
+// than deleting) to preserve the frozen storage layout for split streams.
+// Allow dead_code until the entry points land, so `clippy -D warnings` stays green.
 
 /// Persist [`StreamShares`] alongside the parent stream and give it the same
 /// TTL target.
@@ -541,6 +591,7 @@ pub fn load_delegate(env: &Env, stream_id: u64, delegate: &Address) -> Option<De
 /// Must be called at the same time as [`save_stream`] for a new split stream
 /// so the two entries have the same initial TTL. `save_stream` bumps the parent
 /// entry; this helper mirrors that bump for the shares entry.
+#[allow(dead_code)]
 pub fn save_shares(env: &Env, stream_id: u64, stream: &Stream, shares: &StreamShares) {
     let key = DataKey::StreamShares(stream_id);
     env.storage().persistent().set(&key, shares);
@@ -553,6 +604,7 @@ pub fn save_shares(env: &Env, stream_id: u64, stream: &Stream, shares: &StreamSh
 /// Used by mutating paths (`withdraw_share`) that need to update per-share
 /// `withdrawn` counters. Returns `None` if the stream has no shares entry —
 /// i.e. it is a plain single-recipient stream.
+#[allow(dead_code)]
 pub fn load_shares(env: &Env, stream_id: u64, stream: &Stream) -> Option<StreamShares> {
     let key = DataKey::StreamShares(stream_id);
     let shares: Option<StreamShares> = env.storage().persistent().get(&key);
@@ -569,6 +621,7 @@ pub fn load_shares(env: &Env, stream_id: u64, stream: &Stream) -> Option<StreamS
 /// need to inspect the shares without disturbing them (cancel does not modify
 /// shares at all; each recipient's per-share `withdrawn` is unaffected by the
 /// sender reclaiming the unvested remainder). Returns `None` for plain streams.
+#[allow(dead_code)]
 pub fn peek_shares(env: &Env, stream_id: u64) -> Option<StreamShares> {
     env.storage()
         .persistent()

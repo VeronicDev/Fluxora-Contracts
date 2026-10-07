@@ -415,13 +415,20 @@ Discriminants are ABI and are never renumbered; new variants are appended.
 | 31 | `InvalidTopUp` | Reserved; non-positive top-ups are rejected as `InvalidAmount` first. | reserved |
 | 32 | `TokenAmountMismatch` | Deposit pull changes pool balance by an unexpected amount. | reachable |
 | 33 | `VestedDecreased` | Reserved; current mutation paths preserve non-decreasing vested value. | reserved |
-| 34 | `PoolBalanceDrift` | A funds-moving operation found the pool's real token balance below the total Fluxora accounts for. | reachable |
 | 34 | `ContractHalted` | A state-changing entry point was called while the contract-level halt is engaged. | reachable |
 | 35 | `HaltOperatorAlreadySet` | `set_halt_operator` was called after an operator was already installed. | reachable |
 | 36 | `HaltOperatorNotSet` | `halt`/`resume_contract` was called on a contract with no operator installed. | reachable |
 | 37 | `ContractAlreadyHalted` | `halt` was called while the contract was already halted. | reachable |
 | 38 | `ContractNotHalted` | `resume_contract` was called while the contract was not halted. | reachable |
-| 33 | `VestedDecreased` | Reserved; defensive invariant — the randomized operation-sequence search in `test::vested_decreased` finds no path that lowers vested. | reserved |
+| 39 | `PoolBalanceDrift` | A funds-moving operation found the pool's real token balance below the total Fluxora accounts for. | reachable |
+| 40 | `InvalidReferenceLength` | Reference string exceeds `MAX_REFERENCE_LENGTH` (64). | reachable |
+| 41 | `FactoryPaused` | Reserved; only reachable via `create_stream_via_factory` when the factory's creation pause is engaged. Covered by factory policy tests. | reserved |
+| 42 | `DepositExceedsCap` | Reserved; only reachable via `create_stream_via_factory` when deposit exceeds `max_deposit`. Covered by factory policy tests. | reserved |
+| 43 | `DurationBelowMinimum` | Reserved; only reachable via `create_stream_via_factory` when duration is below `min_duration`. Covered by factory policy tests. | reserved |
+| 44 | `TokenNotAllowlisted` | Reserved; only reachable via `create_stream_via_factory` when the token is not allowlisted. Covered by factory policy tests. | reserved |
+| 45 | `RateBelowMin` | Reserved; only reachable via `create_stream_via_factory` when the rate is below `min_rate_per_second`. Covered by factory policy tests. | reserved |
+| 46 | `RateAboveMax` | Reserved; only reachable via `create_stream_via_factory` when the rate exceeds `max_rate_per_second`. Covered by factory policy tests. | reserved |
+| 47 | `InvalidDestination` | `withdraw_to` or `batch_withdraw_to` destination is the contract address. | reachable |
 
 `TokenTransferFailed` (25) and `TokenMissing` (26) are **stable stream-level categories** for token sub-invocation failures. The token contract's internal error discriminant is intentionally discarded — forwarding it would produce a value clients decode against Fluxora's error table, yielding a silent misinterpretation. The raw diagnostic is visible in the failed transaction's `diagnosticEvents`.
 
@@ -577,6 +584,9 @@ the tolerated-surplus boundary.
 | `batch_create(sender, requests: Vec<BatchCreateRequest>)` | sender | `Vec<u64>` stream ids — creates up to `MAX_BATCH_SIZE` streams in one call |
 | `pause(stream_id)` / `resume(stream_id)` | sender | — |
 | `transfer_recipient(stream_id, new_recipient)` | recipient | — |
+| `withdraw_to(stream_id, destination)` | recipient | `i128` paid — withdraws the full available balance to `destination` (must not be the contract address) |
+| `batch_withdraw_to(recipient, withdrawals: Vec<WithdrawToParam>)` | recipient | `i128` total — one atomic batch with per-stream destinations |
+| `create_stream_via_factory(factory, sender, recipient, token, deposit, start_time, end_time, cliff_time, cancellable, pausable, transferable)` | sender (via factory policy) | `u64` stream id — factory allowlist, caps and rate bounds enforced |
 | `revoke_delegate(stream_id, grantor, delegate)` | sender or recipient | — |
 
 `withdraw` with `amount = None` draws the full available balance.
@@ -1365,6 +1375,7 @@ produced.
 | `stream_exists(stream_id)` | `bool` | no | no |
 | `halted()` | `bool` | no | no |
 | `halt_operator()` | `Option<Address>` | no | no |
+| `upgradeable()` | `bool` (always `false`) | no | no |
 
 > **⚠ RPC read-skew caveat — all view functions**
 >

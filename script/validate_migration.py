@@ -38,16 +38,11 @@ MIGRATION_PATH = REPO_ROOT / "docs" / "MIGRATION.md"
 
 # --- Entrypoint classification ----------------------------------------------
 
-# v1 core (non-delegation) entrypoints — the 21 the migration document counts.
+# v1 core (non-delegation) entrypoints — the 29 the migration document counts.
 # Everything else is a delegation variant.
 DELEGATION_PREFIXES = ("delegate_", "grant_delegate", "revoke_delegate")
 
-CORE_ENTRYPOINT_COUNT = 21
-# v1 core (non-delegation) entrypoints — the 17 the migration document counts.
-# Everything else is a delegation variant.
-DELEGATION_PREFIXES = ("delegate_", "grant_delegate", "revoke_delegate")
-
-CORE_ENTRYPOINT_COUNT = 17
+CORE_ENTRYPOINT_COUNT = 29
 
 # --- Removed entrypoints extracted from MIGRATION.md §3 ---------------------
 # Every name that appears in §3 as "deliberately removed" must NOT exist in v1.
@@ -120,12 +115,14 @@ REMOVED_ENTRYPOINTS = {
     "set_lookback_window",
     "get_lookback_window",
     # Delegated withdrawal / cancellation (old, non-delegate_* variants, §3 callout 2)
+    # Note: `withdraw_to` / `batch_withdraw_to` were old delegated variants
+    # that were removed, but PR #1809 reintroduced the same names for a
+    # different feature (recipient-authorized payout to a destination).
+    # They exist in v1, so they are NOT in the removed set.
     "delegated_withdraw",
     "delegated_cancel",
     "get_delegated_nonce",
     "get_delegated_cancel_nonce",
-    "batch_withdraw_to",
-    "withdraw_to",
     # Keeper cancellation (§3 callout 3)
     "keeper_cancel",
     "bulk_cancel_streams",

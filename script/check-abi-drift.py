@@ -39,9 +39,10 @@ ABI_MD   = REPO_ROOT / "docs" / "ABI.md"
 # intentionally excluded from the ABI JSON and ABI.md  (internal or
 # meta-methods that consumers never call directly).
 # ---------------------------------------------------------------------------
-EXCLUDE_FROM_ABI = {
-    "upgradeable",   # internal flag, not a callable ABI entrypoint
-}
+# Note: `upgradeable` is a public view (always false) and IS part of the ABI.
+# It was previously excluded here, but docs/ABI.md documents it and the ABI
+# JSON includes it, so the exclusion set is empty.
+EXCLUDE_FROM_ABI: set[str] = set()
 
 # ---------------------------------------------------------------------------
 # Entry-point names that are in the ABI JSON but are not yet fully

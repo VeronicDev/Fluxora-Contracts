@@ -331,7 +331,12 @@ impl StreamRecord {
     }
 
     /// Rebuild a [`Stream`], attaching the curve stored beside the record.
-    pub fn into_stream(self, curve: ReleaseCurve) -> Stream {
+    pub fn into_stream(
+        self,
+        curve: ReleaseCurve,
+        cliff_mode: CliffMode,
+        reference: Option<String>,
+    ) -> Stream {
         Stream {
             sender: self.sender,
             recipient: self.recipient,
@@ -349,9 +354,9 @@ impl StreamRecord {
             status: self.status,
             // Neither of these is part of the frozen v1 record, so a stream
             // decoded from storage takes the pre-feature defaults.
-            cliff_mode: CliffMode::DEFAULT,
+            cliff_mode,
             curve,
-            reference: None,
+            reference,
         }
     }
 }
@@ -378,6 +383,8 @@ impl Stream {
 ///
 /// 10_000 bp = 100 %. Every `create_stream_split` call validates that the
 /// supplied shares sum exactly to this value.
+// TODO(#1992): unused until `create_stream_split` lands. Keep for ABI stability.
+#[allow(dead_code)]
 pub const TOTAL_BPS: u32 = 10_000;
 
 /// Parameter for a single `withdraw_to` or `batch_withdraw_to` operation.
@@ -397,6 +404,8 @@ pub struct WithdrawToParam {
 /// `StreamShares` read + one `Stream` read = 2 persistent entries, independent
 /// of the number of other shares), and to stay within the Soroban per-call
 /// instruction budget when iterating over all shares during validation.
+// TODO(#1992): unused until `create_stream_split` lands. Keep for ABI stability.
+#[allow(dead_code)]
 pub const MAX_SPLIT_RECIPIENTS: u32 = 8;
 
 /// One recipient's allocation in a split stream.
@@ -498,4 +507,16 @@ pub enum DataKey {
     /// [`crate::FluxoraStream::create_stream_split`]. A plain single-recipient
     /// stream has no entry here. The TTL mirrors the parent stream entry.
     StreamShares(u64),
+    /// Persistent storage. The [`CliffMode`] of one stream.
+    ///
+    /// Written only when the mode is **not** [`CliffMode::DEFAULT`], so a
+    /// schedule-mode stream — every stream created before cliff modes existed,
+    /// and every stream `create_stream` still creates — has no entry here at
+    /// all and pays no rent for one. A missing entry means `Schedule`.
+    StreamCliffMode(u64),
+    /// Persistent storage. The optional reference string of one stream.
+    ///
+    /// Written only when the stream carries `Some` reference, so a stream
+    /// without one pays no rent for a side-car. A missing entry means `None`.
+    StreamReference(u64),
 }

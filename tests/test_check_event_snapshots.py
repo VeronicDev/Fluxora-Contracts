@@ -43,6 +43,7 @@ EXPECTED_TOPICS = {
     "stream_created",
     "topped_up",
     "ttl_extended",
+    "withdrawal_to",
     "withdrawn",
 }
 

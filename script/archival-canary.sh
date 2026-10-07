@@ -51,7 +51,17 @@ say() { printf '\n\033[1m── %s\033[0m\n' "$*"; }
 #
 # `liveUntilLedgerSeq == 0` means the entry's TTL entry is gone: the data entry
 # is archived. The value is still served even then — that is the point.
+#
+# Offline test override: when CANARY_STUB_LATEST is set (see
+# tests/test_archival_canary.py), skip the RPC entirely and report a synthetic
+# snapshot. CANARY_STUB_LIVE_UNTIL defaults to the recorded LIVE_UNTIL_LEDGER.
 read_canary() {
+  if [[ -n "${CANARY_STUB_LATEST:-}" ]]; then
+    _stub_live="${CANARY_STUB_LIVE_UNTIL:-$LIVE_UNTIL_LEDGER}"
+    # lastModified is irrelevant to the status branch; report plant time.
+    echo "$_stub_live $PLANTED_AT_LEDGER $CANARY_STUB_LATEST canary"
+    return 0
+  fi
   PROBE="$PROBE" KEY_XDR="$KEY_XDR" RPC_URL="$RPC_URL" python3 - <<'PY'
 import base64, json, os, urllib.request
 

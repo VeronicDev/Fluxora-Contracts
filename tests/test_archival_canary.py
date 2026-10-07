@@ -146,9 +146,15 @@ def stub_bin(tmp_path: Path):
     return build
 
 
-def run_canary(bin_dir: Path, *args: str) -> subprocess.CompletedProcess:
+def run_canary(
+    bin_dir: Path, *args: str, stub_latest: int | None = None
+) -> subprocess.CompletedProcess:
     env = dict(os.environ)
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
+    if stub_latest is not None:
+        # Offline stub for read_canary(): skip RPC, report synthetic snapshot
+        # (see script/archival-canary.sh CANARY_STUB_LATEST).
+        env["CANARY_STUB_LATEST"] = str(stub_latest)
     return subprocess.run(
         ["bash", str(SCRIPT), *args],
         capture_output=True,
@@ -225,11 +231,11 @@ def test_status_run_reports_alive_and_exits_zero(stub_bin):
     planted = int_constant("PLANTED_AT_LEDGER")
     bin_dir = stub_bin(latest_ledger=planted + 10)
 
-    result = run_canary(bin_dir)
+    result = run_canary(bin_dir, stub_latest=planted + 10)
 
     assert result.returncode == 0, result.stderr
     assert "ALIVE" in result.stdout, result.stdout
-    assert "Not archived yet" in result.stdout
+    assert "ledgers left" in result.stdout, result.stdout
     # The remaining figure is the difference to live-until, not the difference
     # from plant time.
     remaining = int_constant("LIVE_UNTIL_LEDGER") - (planted + 10)
@@ -240,25 +246,22 @@ def test_status_run_reports_alive_and_exits_zero(stub_bin):
 
 def test_status_run_with_no_ledgers_left_flags_archival(stub_bin):
     """The same run one ledger past the window: still no network writes."""
-    bin_dir = stub_bin(
-        latest_ledger=int_constant("LIVE_UNTIL_LEDGER") + 1, stellar_exit=1
-    )
+    live_until = int_constant("LIVE_UNTIL_LEDGER")
+    bin_dir = stub_bin(latest_ledger=live_until + 1, stellar_exit=1)
 
-    result = run_canary(bin_dir)
+    result = run_canary(bin_dir, stub_latest=live_until + 1)
 
-    # The read fails, the invoke fails, and without --restore the script stops
-    # there and reports the round trip as pending rather than claiming success.
-    assert "PAST LIVE-UNTIL" in result.stdout, result.stdout
-    assert "read failed: the entry is archived" in result.stdout, result.stdout
-    assert "--restore" in result.stdout, result.stdout
+    # Status-only mode reports the archived entry without submitting anything.
+    assert "ARCHIVED" in result.stdout, result.stdout
+    assert "ledgers past it" in result.stdout, result.stdout
+    assert "value still served" in result.stdout, result.stdout
 
 
 def test_the_archived_branch_refuses_to_restore_unless_asked(stub_bin):
     """`--restore` is opt-in: a monitoring job must be able to run read-only."""
     calls = Path(os.environ.get("TMPDIR", "/tmp")) / "canary-stub-calls"
-    bin_dir = stub_bin(
-        latest_ledger=int_constant("LIVE_UNTIL_LEDGER") + 1, stellar_exit=1
-    )
+    live_until = int_constant("LIVE_UNTIL_LEDGER")
+    bin_dir = stub_bin(latest_ledger=live_until + 1, stellar_exit=1)
     # Log every `stellar` invocation so the restore step can be detected.
     write_shim(
         bin_dir,
@@ -267,7 +270,7 @@ def test_the_archived_branch_refuses_to_restore_unless_asked(stub_bin):
     )
     calls.unlink(missing_ok=True)
 
-    result = run_canary(bin_dir)
+    result = run_canary(bin_dir, stub_latest=live_until + 1)
 
     invocations = calls.read_text(encoding="utf-8") if calls.exists() else ""
     assert "restore" not in invocations, (
@@ -283,10 +286,9 @@ def test_the_script_never_reports_success_before_the_read_back(stub_bin):
     The banner "Round trip complete" may only appear after the read returns the
     planted value; the stubbed run stops before that, so it must be absent.
     """
-    bin_dir = stub_bin(
-        latest_ledger=int_constant("LIVE_UNTIL_LEDGER") + 1, stellar_exit=1
-    )
-    result = run_canary(bin_dir)
+    live_until = int_constant("LIVE_UNTIL_LEDGER")
+    bin_dir = stub_bin(latest_ledger=live_until + 1, stellar_exit=1)
+    result = run_canary(bin_dir, stub_latest=live_until + 1)
 
     assert "Round trip complete" not in result.stdout, result.stdout
 

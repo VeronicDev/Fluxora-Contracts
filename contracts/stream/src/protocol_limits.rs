@@ -1,5 +1,7 @@
-/// Single authoritative record of the Soroban protocol version this contract
-/// targets. All budget-guardrail test ceilings are derived from this constant.
+#![allow(dead_code)]
+//! Single authoritative record of the Soroban protocol version this contract
+//! targets. All budget-guardrail test ceilings are derived from this constant.
+// TODO: wire budget-guardrail tests to `LIMITS` or remove this module.
 ///
 /// # How to perform a protocol bump
 ///

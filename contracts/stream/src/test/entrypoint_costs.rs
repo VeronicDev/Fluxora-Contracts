@@ -264,4 +264,58 @@ fn entrypoint_cost_snapshot() {
     h.client.set_halt_operator(&h.sender);
     h.client.halt_operator();
     record(&h, "halt_operator");
+
+    // withdraw_to: full available balance to a destination (not the contract).
+    let (h, id) = fresh();
+    h.advance(10 * DAY);
+    h.client.withdraw_to(&id, &h.other);
+    record(&h, "withdraw_to");
+
+    // batch_withdraw_to: one stream to a destination in a batch.
+    let (h, id) = fresh();
+    h.advance(10 * DAY);
+    let mut withdrawals = soroban_sdk::Vec::new(&h.env);
+    withdrawals.push_back(crate::WithdrawToParam {
+        stream_id: id,
+        destination: h.other.clone(),
+    });
+    h.client.batch_withdraw_to(&h.recipient, &withdrawals);
+    record(&h, "batch_withdraw_to");
+
+    // reclaim_dust: settle fully then recover any residue (usually zero).
+    let (h, id) = fresh();
+    h.advance(100 * DAY);
+    h.client.withdraw(&id, &None);
+    h.client.reclaim_dust(&id);
+    record(&h, "reclaim_dust");
+
+    // create_stream_via_factory: deploy a permissive factory and route creation.
+    {
+        let h = wasm_harness();
+        let factory_id = h.env.register(fluxora_factory::FluxoraFactory, ());
+        let factory_client = fluxora_factory::FluxoraFactoryClient::new(&h.env, &factory_id);
+        // Permissive policy: large cap, tiny duration, allowlisted token.
+        factory_client.init(&h.sender, &h.contract_id, &100_000_000_000, &1);
+        factory_client.set_allowlist(&h.token, &true);
+        let start = h.now();
+        h.client.create_stream_via_factory(
+            &factory_id,
+            &h.sender,
+            &h.recipient,
+            &h.token,
+            &(1_000 * ONE),
+            &start,
+            &(start + 100 * DAY),
+            &start,
+            &true,
+            &true,
+            &true,
+        );
+        record(&h, "create_stream_via_factory");
+    }
+
+    // upgradeable: constant view, always false.
+    let (h, _) = fresh();
+    h.client.upgradeable();
+    record(&h, "upgradeable");
 }

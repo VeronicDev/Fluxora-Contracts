@@ -151,14 +151,19 @@ The consequence is handled explicitly rather than assumed away:
 
 ## 5. Storage model
 
-Four keys, and no others:
+Nine keys, and no others:
 
 | Key | Storage | Contents |
 |---|---|---|
 | `DataKey::NextStreamId` | instance | Monotonic counter; incremented only on successful creation |
 | `DataKey::StreamCount` | instance | Streams successfully created; incremented in the same transaction as `NextStreamId` and the new entry |
+| `DataKey::PooledBalance(Address)` | instance | Per-token running total the contract expects to hold; credited by deposits, debited by payouts/refunds, reconciled against the token balance |
 | `DataKey::Stream(u64)` | persistent | The stream record: parties, token, deposit, schedule, flags, status, `withdrawn` |
 | `DataKey::Delegate(u64, Address)` | persistent | A delegation grant: operation bitmask and optional expiry |
+| `DataKey::StreamCurve(u64)` | persistent | The `ReleaseCurve` of one stream; written only for non-linear curves, missing means linear |
+| `DataKey::HaltOperator` | instance | The one-shot contract halt operator; absent until `set_halt_operator` runs once |
+| `DataKey::HaltedAt` | instance | Unix seconds at which the halt was engaged; present iff the contract is halted |
+| `DataKey::StreamShares(u64)` | persistent | Share allocations for a split stream; present iff created via split creation |
 
 Two properties follow from this layout, and both are load-bearing:
 
@@ -176,15 +181,16 @@ Two properties follow from this layout, and both are load-bearing:
 
 ## 6. Entry point surface
 
-**16 core entry points plus 8 delegation entry points**, as `MIGRATION.md` §3
+**30 core entry points plus 8 delegation entry points**, as `MIGRATION.md` §3
 states. Grouped by what they touch:
 
 | Group | Entry points |
 |---|---|
-| Lifecycle | `create_stream`, `top_up`, `withdraw`, `batch_withdraw`, `cancel`, `pause`, `resume`, `transfer_recipient` |
+| Lifecycle | `create_stream`, `create_stream_with_curve`, `create_stream_with_cliff_mode`, `create_stream_via_factory`, `batch_create`, `top_up`, `withdraw`, `withdraw_to`, `batch_withdraw`, `batch_withdraw_to`, `cancel`, `batch_cancel`, `reclaim_dust`, `pause`, `resume`, `transfer_recipient` |
 | Delegation | `grant_delegate`, `revoke_delegate`, `delegate_withdraw`, `delegate_cancel`, `delegate_pause`, `delegate_resume`, `delegate_top_up`, `delegate_transfer_recipient` |
-| Views | `get_stream`, `stream_count`, `stream_exists`, `withdrawable_of`, `vested_of`, `refundable_of` |
+| Views | `get_stream`, `withdrawable_of`, `vested_of`, `refundable_of`, `stream_count`, `stream_exists`, `halted`, `halt_operator`, `upgradeable` |
 | TTL maintenance | `extend_stream_ttl`, `batch_extend_ttl` |
+| Emergency halt | `set_halt_operator`, `halt`, `resume_contract` |
 
 A batch is capped at `MAX_BATCH_SIZE` (16) ids on every batch entry point, and
 the ceiling is checked before ids are resolved and before authorization.
@@ -238,7 +244,7 @@ oversight — each is argued at length in [`MIGRATION.md`](MIGRATION.md) §3 and
   the release path builds the product package only;
 * the storage table names every `DataKey` variant and no others;
 * the entry point groups are exactly the committed ABI's function names, each
-  listed once, split into the documented 16 core and 8 delegation;
+  listed once, split into the documented 30 core and 8 delegation;
 * the trust boundary claims match the per-entry point authority labels in
   [`audit.md`](audit.md); and
 * every "not here" entry is genuinely absent from the ABI.

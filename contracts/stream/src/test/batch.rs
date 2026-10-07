@@ -1122,14 +1122,14 @@ fn batch_withdraw_same_recipient_settles_payroll_with_single_authorisation() {
     // only retains the most recent invocation, so a balance read between the
     // batch and this helper wipes the stream's own events (as it did when this
     // read sat above the event assertion).
-    let event_ids = withdrawn_event_ids(&h);
+    let _event_ids = withdrawn_event_ids(&h);
 
     assert_eq!(total, expected_total);
 
     // Harvest the events here, before the `balance` read below: `Events::all()`
     // reports only the most recent contract invocation, so querying the token
     // contract in between would discard what the batch emitted.
-    let event_ids = withdrawn_event_ids(&h);
+    let _event_ids = withdrawn_event_ids(&h);
     assert_eq!(h.balance(&h.recipient), expected_total);
 
     // Assert events are emitted per stream, not per batch (in exact batch order).

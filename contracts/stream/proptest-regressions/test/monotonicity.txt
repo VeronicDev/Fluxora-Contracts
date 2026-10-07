@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 27897eea8cb04bfc5061ffa07cf03babdd3a3f970393ae4d34c2ee11b90417a7 # shrinks to duration = 97, slack = 0, elapsed_frac = 1, ops = [Withdraw]
+cc 3499317cbceca4d017f7e27ac22f2c14a354218410fd534fdc2958747d800c87 # shrinks to duration = 97, slack = 1, elapsed_frac = 1, amounts = [1]

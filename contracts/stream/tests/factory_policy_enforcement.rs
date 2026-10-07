@@ -15,11 +15,7 @@ extern crate std;
 
 use fluxora_factory::{FluxoraFactory, FluxoraFactoryClient};
 use fluxora_stream::{Error, FluxoraStream, FluxoraStreamClient};
-use soroban_sdk::{
-    testutils::Address as _,
-    token::{Client as TokenClient, StellarAssetClient},
-    Address, Env,
-};
+use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Env};
 
 // ---------------------------------------------------------------------------
 // Fixture
@@ -72,11 +68,11 @@ impl Fixture {
         }
     }
 
-    fn stream_client(&self) -> FluxoraStreamClient {
+    fn stream_client(&self) -> FluxoraStreamClient<'_> {
         FluxoraStreamClient::new(&self.env, &self.stream_id)
     }
 
-    fn factory_client(&self) -> FluxoraFactoryClient {
+    fn factory_client(&self) -> FluxoraFactoryClient<'_> {
         FluxoraFactoryClient::new(&self.env, &self.factory_id)
     }
 

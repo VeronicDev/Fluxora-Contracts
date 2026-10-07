@@ -539,11 +539,13 @@ fn generated_history(h: &Harness<'_>) -> Recorder {
     h.client.withdraw(&s0, &None);
     rec.step(h, "withdraw", &["withdrawn"]);
 
-    h.client.cancel(&s0);
-    rec.step(h, "cancel", &["cancelled"]);
-
+    // Extend while live: `extend_stream_ttl` rejects terminal streams, so this
+    // must run before `cancel`.
     h.client.extend_stream_ttl(&s0);
     rec.step(h, "extend_stream_ttl", &["ttl_extended"]);
+
+    h.client.cancel(&s0);
+    rec.step(h, "cancel", &["cancelled"]);
 
     // --- stream 1: drained while paused -------------------------------------
     // Fully vested, then paused, then drained. Depletion folds the in-progress

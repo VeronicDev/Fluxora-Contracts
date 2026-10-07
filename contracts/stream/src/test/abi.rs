@@ -33,8 +33,9 @@ use soroban_sdk::xdr::{
 };
 
 use crate::events::{
-    Cancelled, ContractHalted, ContractResumed, HaltOperatorSet, Paused, RecipientTransferred,
-    Resumed, StreamCreated, ToppedUp, TtlExtended, Withdrawn,
+    Cancelled, ContractHalted, ContractResumed, DelegateGranted, DelegateRevoked, HaltOperatorSet,
+    Paused, RecipientTransferred, Resumed, StreamCreated, ToppedUp, TtlExtended, WithdrawalTo,
+    Withdrawn,
 };
 use crate::{
     BatchCancelOutcome, CliffMode, Error, FluxoraStream, ReleaseCurve, Stream, StreamStatus,
@@ -98,6 +99,8 @@ const AUTH: &[(&str, &str)] = &[
     ("create_stream", "sender"),
     ("create_stream_with_curve", "sender"),
     ("create_stream_with_cliff_mode", "sender"),
+    ("create_stream_via_factory", "sender"),
+    ("batch_create", "sender"),
     ("top_up", "sender"),
     ("cancel", "sender"),
     ("reclaim_dust", "sender"),
@@ -105,7 +108,9 @@ const AUTH: &[(&str, &str)] = &[
     ("pause", "sender"),
     ("resume", "sender"),
     ("withdraw", "recipient"),
+    ("withdraw_to", "recipient"),
     ("batch_withdraw", "recipient"),
+    ("batch_withdraw_to", "recipient"),
     ("transfer_recipient", "recipient"),
     ("grant_delegate", "grantor"),
     ("revoke_delegate", "grantor"),
@@ -131,6 +136,7 @@ const AUTH: &[(&str, &str)] = &[
     ("resume_contract", "operator"),
     ("halted", "none"),
     ("halt_operator", "none"),
+    ("upgradeable", "none"),
 ];
 
 fn auth_of(name: &str) -> &'static str {
@@ -292,13 +298,22 @@ fn current_inventory() -> Inventory {
         function_from_spec(parse_spec(&FluxoraStream::spec_xdr_create_stream())),
         function_from_spec(parse_spec(
             &FluxoraStream::spec_xdr_create_stream_with_curve(),
+        )),
+        function_from_spec(parse_spec(
             &FluxoraStream::spec_xdr_create_stream_with_cliff_mode(),
         )),
+        function_from_spec(parse_spec(
+            &FluxoraStream::spec_xdr_create_stream_via_factory(),
+        )),
+        function_from_spec(parse_spec(&FluxoraStream::spec_xdr_batch_create())),
         function_from_spec(parse_spec(&FluxoraStream::spec_xdr_top_up())),
         function_from_spec(parse_spec(&FluxoraStream::spec_xdr_withdraw())),
+        function_from_spec(parse_spec(&FluxoraStream::spec_xdr_withdraw_to())),
         function_from_spec(parse_spec(&FluxoraStream::spec_xdr_batch_withdraw())),
+        function_from_spec(parse_spec(&FluxoraStream::spec_xdr_batch_withdraw_to())),
         function_from_spec(parse_spec(&FluxoraStream::spec_xdr_cancel())),
         function_from_spec(parse_spec(&FluxoraStream::spec_xdr_batch_cancel())),
+        function_from_spec(parse_spec(&FluxoraStream::spec_xdr_reclaim_dust())),
         function_from_spec(parse_spec(&FluxoraStream::spec_xdr_pause())),
         function_from_spec(parse_spec(&FluxoraStream::spec_xdr_resume())),
         function_from_spec(parse_spec(&FluxoraStream::spec_xdr_transfer_recipient())),
@@ -326,6 +341,7 @@ fn current_inventory() -> Inventory {
         function_from_spec(parse_spec(&FluxoraStream::spec_xdr_resume_contract())),
         function_from_spec(parse_spec(&FluxoraStream::spec_xdr_halted())),
         function_from_spec(parse_spec(&FluxoraStream::spec_xdr_halt_operator())),
+        function_from_spec(parse_spec(&FluxoraStream::spec_xdr_upgradeable())),
     ];
     functions.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -343,11 +359,14 @@ fn current_inventory() -> Inventory {
     let mut events = vec![
         event_from_spec(parse_spec(&StreamCreated::spec_xdr())),
         event_from_spec(parse_spec(&Withdrawn::spec_xdr())),
+        event_from_spec(parse_spec(&WithdrawalTo::spec_xdr())),
         event_from_spec(parse_spec(&Cancelled::spec_xdr())),
         event_from_spec(parse_spec(&Paused::spec_xdr())),
         event_from_spec(parse_spec(&Resumed::spec_xdr())),
         event_from_spec(parse_spec(&ToppedUp::spec_xdr())),
         event_from_spec(parse_spec(&RecipientTransferred::spec_xdr())),
+        event_from_spec(parse_spec(&DelegateGranted::spec_xdr())),
+        event_from_spec(parse_spec(&DelegateRevoked::spec_xdr())),
         event_from_spec(parse_spec(&TtlExtended::spec_xdr())),
         // Contract-level emergency halt (#1818).
         event_from_spec(parse_spec(&HaltOperatorSet::spec_xdr())),
@@ -1157,11 +1176,29 @@ fn auth_table_covers_every_public_method() {
 fn frozen_v1_error_discriminants_are_an_unchanged_prefix() {
     let current = current_inventory();
     let frozen = frozen_v1();
-    // The frozen v1 set is the interface of record: existing discriminants
-    // must be byte-for-byte identical, in order. New discriminants may only be
-    // appended after it (additive per docs/ABI.md).
+    // The frozen v1 set is the interface of record: every frozen discriminant
+    // must survive byte-for-byte identical in the current inventory. New
+    // discriminants (24-47, including 39 PoolBalanceDrift and 40
+    // InvalidReferenceLength) may only be added, never renumbered (additive
+    // per docs/ABI.md). Source order is not the record —
+    // `InvalidReferenceLength` (=40) is declared after `SelfStream` (=6) but
+    // its discriminant is new, so the check is by name, not by slice prefix.
     assert!(current.errors.len() >= frozen.errors.len());
-    assert_eq!(current.errors[..frozen.errors.len()], frozen.errors[..]);
+    assert_eq!(frozen.errors.len(), 23);
+    assert_eq!(current.errors.len(), 47);
+    let current_by_name: BTreeMap<&str, u32> = current
+        .errors
+        .iter()
+        .map(|e| (e.name.as_str(), e.discriminant))
+        .collect();
+    for e in &frozen.errors {
+        assert_eq!(
+            current_by_name.get(e.name.as_str()),
+            Some(&e.discriminant),
+            "frozen error `{}` discriminant changed or missing",
+            e.name
+        );
+    }
 }
 
 #[test]
@@ -1265,14 +1302,14 @@ fn adding_a_struct_field_to_a_udt_is_breaking_and_needs_the_bump_we_took() {
     check_compatibility(&old, &new).unwrap();
 }
 
-/// `create_stream` is the v1 entry point and must keep its exact frozen
-/// signature, delegating to the mode-taking form with the default.
+/// `create_stream` gained a trailing `reference` in v2 (ABI_VERSION 2).
 ///
-/// This is the whole reason the new capability is a *new method* rather than a
-/// new parameter on the old one: every deployed v1 caller — the TypeScript SDK,
-/// the frontend, `script/testnet-exercise.sh` — keeps compiling and keeps
-/// getting the behaviour it was written against. If someone ever collapses
-/// `cliff_mode` into `create_stream`, this fails.
+/// The frozen v1 record stays frozen at 10 params; the current spec has 11
+/// with the same 10-param prefix plus `reference: Option<String>`. This is
+/// the v2 breaking change the version bump documents: every deployed v1
+/// caller must add the trailing argument. `cliff_mode` remains a *new
+/// method* (`create_stream_with_cliff_mode`) rather than a collapsed
+/// parameter, so that part of the v1 surface is still additive.
 #[test]
 fn create_stream_keeps_its_frozen_v1_signature() {
     let frozen = frozen_v1();
@@ -1287,9 +1324,25 @@ fn create_stream_keeps_its_frozen_v1_signature() {
         .iter()
         .find(|f| f.name == "create_stream")
         .expect("current spec has create_stream");
+    // Frozen v1 stays frozen at 10 params.
+    assert_eq!(want.inputs.len(), 10, "frozen v1 create_stream is 10 params");
+    // v2 adds exactly one trailing param: `reference`.
     assert_eq!(
-        want, have,
-        "create_stream drifted from the frozen v1 signature"
+        have.inputs.len(),
+        11,
+        "v2 create_stream has 11 params with reference"
+    );
+    assert_eq!(&have.inputs[..10], &want.inputs[..]);
+    assert_eq!(
+        have.inputs[10],
+        param("reference", "Option<String>"),
+        "the v2 addition is the trailing reference"
+    );
+    assert_eq!(have.outputs, want.outputs);
+    assert_eq!(have.auth, want.auth);
+    assert_eq!(
+        current.abi_version, 2,
+        "the reference addition is breaking and requires ABI_VERSION 2"
     );
 }
 
@@ -1418,6 +1471,7 @@ fn permissionless_methods_are_exactly_the_none_auth_set() {
             "batch_extend_ttl",
             "halted",
             "halt_operator",
+            "upgradeable",
         ]
     );
 }
@@ -1435,6 +1489,8 @@ fn missing_stream_failure_is_stream_not_found_discriminant_one() {
 
 #[test]
 fn oversized_batch_failure_is_batch_too_large_discriminant_nineteen() {
+    use super::common::Harness;
+
     let h = Harness::new();
     let ids: std::vec::Vec<u64> = (0..17).collect();
     let err = h
@@ -1470,9 +1526,11 @@ fn release_curve_changes_require_the_abi_version_bump() {
 }
 
 /// The curve is wired end to end in the generated spec: a new sender-authorized
-/// entry point taking a trailing `ReleaseCurve`, an untouched `create_stream`,
-/// a `Stream` carrying the field, and a `StreamCreated` whose payload ends with
-/// it (an append, so indexers that tolerate trailing fields keep working).
+/// entry point taking a trailing `ReleaseCurve`, a `create_stream` that now
+/// ends in `reference` (v2), a `Stream` carrying the field, and a
+/// `StreamCreated` whose payload appends `curve`, then `cliff_mode`, then
+/// `reference` (each append keeps indexers that tolerate trailing fields
+/// working).
 #[test]
 fn release_curve_is_visible_across_the_generated_spec() {
     let inv = current_inventory();
@@ -1489,14 +1547,22 @@ fn release_curve_is_visible_across_the_generated_spec() {
         &param("curve", "ReleaseCurve"),
         "the curve must be the trailing parameter"
     );
-    // `create_stream` is untouched: same inputs, still ending in `bool`.
+    // `create_stream` is v2: same 10-param v1 prefix, now ending in
+    // `reference` rather than `transferable`. Both entry points have 11
+    // inputs with an identical 10-param prefix; only the trailer differs.
     let plain = inv
         .functions
         .iter()
         .find(|f| f.name == "create_stream")
         .unwrap();
-    assert_eq!(plain.inputs.len(), create_with_curve.inputs.len() - 1);
-    assert_eq!(plain.inputs.last().unwrap(), &param("transferable", "bool"));
+    assert_eq!(plain.inputs.len(), 11);
+    assert_eq!(create_with_curve.inputs.len(), 11);
+    assert_eq!(&plain.inputs[..10], &create_with_curve.inputs[..10]);
+    assert_eq!(
+        plain.inputs.last().unwrap(),
+        &param("reference", "Option<String>"),
+        "v2 create_stream ends in reference"
+    );
 
     let stream = inv.types.iter().find(|t| t.name == "Stream").unwrap();
     assert!(
@@ -1536,9 +1602,21 @@ fn release_curve_is_visible_across_the_generated_spec() {
         .iter()
         .find(|e| e.name == "StreamCreated")
         .unwrap();
+    // v1 payload was 8 fields ending in `transferable`; v2 appends `curve`,
+    // then `cliff_mode`, then `reference`.
+    assert_eq!(
+        created.data[8],
+        param("curve", "ReleaseCurve"),
+        "the curve must be appended to the StreamCreated payload"
+    );
+    assert_eq!(
+        created.data[9],
+        param("cliff_mode", "CliffMode"),
+        "cliff_mode follows the curve in the StreamCreated payload"
+    );
     assert_eq!(
         created.data.last().unwrap(),
-        &param("curve", "ReleaseCurve"),
-        "the curve must be appended to the StreamCreated payload"
+        &param("reference", "Option<String>"),
+        "reference is the trailing StreamCreated payload field"
     );
 }

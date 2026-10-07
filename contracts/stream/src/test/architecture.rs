@@ -14,7 +14,7 @@
 //! |---|---|
 //! | Components and which of them ship | root `Cargo.toml` members, `script/release.sh` |
 //! | Storage keys | the `DataKey` enum in `contracts/stream/src/types.rs` |
-//! | Entry point groups and the 16 + 8 split | the committed ABI inventory |
+//! | Entry point groups and the 30 + 8 split | the committed ABI inventory |
 //! | Per-entry-point authority | the authoritative table in `docs/audit.md` |
 //! | Features that are deliberately absent | the same ABI inventory |
 //!
@@ -291,7 +291,7 @@ fn the_storage_table_is_exactly_the_datakey_enum() {
 // ---------------------------------------------------------------------------
 
 /// The entry point table is exactly the ABI: every exported function listed
-/// once, split into the documented 16 core and 8 delegation entry points.
+/// once, split into the documented 30 core and 8 delegation entry points.
 #[test]
 fn the_entry_point_table_is_exactly_the_abi() {
     let abi = abi_function_names();
@@ -318,14 +318,14 @@ fn the_entry_point_table_is_exactly_the_abi() {
 
     let delegation = documented.iter().filter(|n| is_delegation(n)).count();
     let core = documented.len() - delegation;
-    assert_eq!(core, 16, "the document's core entry point count changed");
+    assert_eq!(core, 30, "the document's core entry point count changed");
     assert_eq!(
         delegation, 8,
         "the document's delegation entry point count changed"
     );
     assert!(
-        surface.contains("16 core entry points plus 8 delegation"),
-        "the document no longer states the 16 + 8 split it is checked against",
+        surface.contains("30 core entry points plus 8 delegation"),
+        "the document no longer states the 30 + 8 split it is checked against",
     );
 
     // The batch ceiling claim.

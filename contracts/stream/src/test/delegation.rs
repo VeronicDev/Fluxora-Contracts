@@ -19,6 +19,19 @@ use soroban_sdk::Address;
 use super::common::*;
 use crate::{op, Error};
 
+/// The address whose `require_auth` the last invocation actually demanded.
+fn required_auth(env: &soroban_sdk::Env) -> soroban_sdk::Address {
+    let auths = env.auths();
+    assert!(!auths.is_empty(), "call required no authorization at all");
+    auths[0].0.clone()
+}
+
+/// Drop all mocked authorization. Every subsequent call that relies on
+/// `require_auth` must fail.
+fn revoke_all_auths(env: &soroban_sdk::Env) {
+    env.mock_auths(&[]);
+}
+
 // ---------------------------------------------------------------------------
 // Grant and basic use
 // ---------------------------------------------------------------------------
@@ -1087,7 +1100,7 @@ fn delegate_resume_requires_the_delegate() {
     let id = h.create_simple(1_000 * ONE, 100 * DAY);
     h.advance(10 * DAY);
     h.client
-        .grant_delegate(&id, &h.sender, &agent, &op::RESUME, &None);
+        .grant_delegate(&id, &h.sender, &agent, &(op::PAUSE | op::RESUME), &None);
     h.client.delegate_pause(&id, &agent);
     h.client.delegate_resume(&id, &agent);
     assert_eq!(required_auth(&h.env), agent, "delegate_resume");
@@ -1102,7 +1115,7 @@ fn delegate_resume_fails_without_authorization() {
     let id = h.create_simple(1_000 * ONE, 100 * DAY);
     h.advance(10 * DAY);
     h.client
-        .grant_delegate(&id, &h.sender, &agent, &op::RESUME, &None);
+        .grant_delegate(&id, &h.sender, &agent, &(op::PAUSE | op::RESUME), &None);
     h.client.delegate_pause(&id, &agent);
 
     revoke_all_auths(&h.env);
@@ -1118,7 +1131,7 @@ fn rejected_delegate_resume_does_not_advance_paused_total_or_clear_paused_at() {
     let id = h.create_simple(1_000 * ONE, 100 * DAY);
     h.advance(30 * DAY);
     h.client
-        .grant_delegate(&id, &h.sender, &agent, &op::RESUME, &None);
+        .grant_delegate(&id, &h.sender, &agent, &(op::PAUSE | op::RESUME), &None);
     h.client.delegate_pause(&id, &agent);
     let paused_at_before = h.get(id).paused_at;
 

@@ -608,10 +608,10 @@ class TestRealErrorMd:
 
     def test_stream_has_all_34_variants(self, real_sections):
         stream = real_sections["ContractError (stream)"]
-        assert {entry.code for entry in stream} == set(range(1, 35))
+        assert {entry.code for entry in stream} == set(range(1, 48))
     def test_stream_has_all_38_variants(self, real_sections):
         stream = real_sections["ContractError (stream)"]
-        assert {entry.code for entry in stream} == set(range(1, 39))
+        assert {entry.code for entry in stream} == set(range(1, 48))
 
     def test_stream_has_no_intra_collisions_after_fix(self, real_sections):
         """docs/error.md stream table was fixed: no intra-section collisions remain."""

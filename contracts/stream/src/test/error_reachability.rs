@@ -76,7 +76,7 @@ enum Account {
 /// Kept as a value so the tests can iterate it. `names_and_discriminants_match_the_abi_fixture`
 /// pins its length to `DISCRIMINANT_FIXTURE`, which is itself pinned to
 /// `LAST_DISCRIMINANT`, so dropping an entry here fails the suite.
-const ALL: [Error; 46] = [
+const ALL: [Error; 47] = [
     Error::StreamNotFound,
     Error::InvalidTimeRange,
     Error::InvalidCliff,
@@ -123,6 +123,7 @@ const ALL: [Error; 46] = [
     Error::TokenNotAllowlisted,
     Error::RateBelowMin,
     Error::RateAboveMax,
+    Error::InvalidDestination,
 ];
 
 /// Frozen allowlist of discriminants that have no reaching test, in ascending
@@ -788,6 +789,16 @@ fn describe(e: Error) -> (&'static str, u32, Account) {
                 "Only reachable via create_stream_via_factory when rate > max_rate_per_second. \
                  Covered by test::factory_policy_enforcement::rate_above_maximum_is_rejected.",
             ),
+        ),
+        Error::InvalidDestination => (
+            "InvalidDestination",
+            47,
+            Account::Reach(|h| {
+                let id = h.create_simple(1_000 * ONE, 100 * DAY);
+                h.advance(10 * DAY);
+                let dest = h.contract_id.clone();
+                h.client.try_withdraw_to(&id, &dest).unwrap_err().unwrap()
+            }),
         ),
     }
 }

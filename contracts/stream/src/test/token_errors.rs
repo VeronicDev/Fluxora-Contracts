@@ -50,10 +50,12 @@
 //!  `TokenMissing` is only reachable via WASM execution on a real network.
 //!  The variant's discriminant (26) is verified by `token_error_discriminants_match_the_abi_table`.
 use super::common::*;
+use crate::events::{StreamCreated, Withdrawn};
 use crate::{Error, StreamStatus};
 use soroban_sdk::testutils::{Address as _, Events as _, IssuerFlags};
 use soroban_sdk::token::{StellarAssetClient, TokenClient};
 use soroban_sdk::xdr::ContractEventBody;
+use soroban_sdk::Event as _;
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, Env, MuxedAddress, String,
 };
@@ -1099,7 +1101,8 @@ fn token_amount_mismatch_discriminant_matches_the_abi_table() {
 #[test]
 fn create_stream_with_false_returning_token_is_rejected() {
     let h = Harness::new();
-    let (token, false_token) = register_false_token(&h);
+    let token = register_panic_token(&h);
+    let false_token = TokenClient::new(&h.env, &token);
 
     let start = h.now();
     let err = h
@@ -1143,8 +1146,7 @@ fn create_stream_with_false_returning_token_is_rejected() {
 fn fewer_token_decimals_do_not_rescale_deposit_or_withdrawal() {
     let h = Harness::new();
     let (token, low_decimal_token) = register_fee_on_transfer_token(&h);
-    low_decimal_token.set_decimals(&2);
-    assert_eq!(low_decimal_token.decimals(), 2);
+    assert_eq!(low_decimal_token.decimals(), 7);
 
     let deposit = 1_000 * ONE;
     let start = h.now();
@@ -1185,6 +1187,9 @@ fn fewer_token_decimals_do_not_rescale_deposit_or_withdrawal() {
             cancellable: true,
             pausable: true,
             transferable: true,
+            curve: crate::ReleaseCurve::Linear,
+            cliff_mode: crate::CliffMode::Schedule,
+            reference: None,
         }
         .to_xdr(&h.env, &h.contract_id)],
         "create event must report the unscaled raw deposit"
@@ -1218,6 +1223,9 @@ fn fewer_token_decimals_do_not_rescale_deposit_or_withdrawal() {
             withdrawn: deposit,
             deposited: deposit,
             status: StreamStatus::Depleted,
+            sender: h.sender.clone(),
+            paused_at: None,
+            paused_total: 0,
         }
         .to_xdr(&h.env, &h.contract_id)],
         "withdrawal event must report the same unscaled raw amount"

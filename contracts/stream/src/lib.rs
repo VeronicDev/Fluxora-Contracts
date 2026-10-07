@@ -96,8 +96,6 @@ mod events;
 mod protocol_limits;
 mod storage;
 mod types;
-#[cfg(test)]
-mod protocol_limits;
 
 pub use accrual::{
     cliff_reached, duration, elapsed, liability, refundable, stream_time, vested, withdrawable,
@@ -109,14 +107,14 @@ pub use storage::{
 pub use types::op;
 pub use types::{
     BatchCancelOutcome, BatchCreateRequest, CliffMode, DataKey, DelegateGrant, ReleaseCurve,
-    Stream, StreamStatus, MAX_REFERENCE_LENGTH, WithdrawToParam,
+    Stream, StreamStatus, WithdrawToParam, MAX_REFERENCE_LENGTH,
 };
 
 // Re-export events for contract spec and test access
 pub use events::{
     Cancelled, ContractHalted, ContractResumed, DelegateGranted, DelegateRevoked, HaltOperatorSet,
-    Paused, RecipientTransferred, Resumed, StreamCreated, StreamPaused, StreamToppedUp, TtlExtended,
-    Withdrawn, WithdrawalTo,
+    Paused, RecipientTransferred, Resumed, StreamCreated, ToppedUp, TtlExtended, WithdrawalTo,
+    Withdrawn,
 };
 
 use soroban_sdk::{
@@ -552,8 +550,12 @@ impl FluxoraStream {
         transferable: bool,
         reference: Option<String>,
     ) -> Result<u64, Error> {
+        // SDK 27 rejects a second `require_auth` for the same address in the
+        // same frame (`Auth::ExistingValue`). Auth lives in each public
+        // wrapper exactly once; `create_stream_inner` itself does NOT auth
+        // so `batch_create` (which auths once for the whole batch) can call
+        // it N times without tripping the guard.
         sender.require_auth();
-
         Self::create_stream_inner(
             env,
             sender,
@@ -661,6 +663,7 @@ impl FluxoraStream {
         transferable: bool,
         curve: ReleaseCurve,
     ) -> Result<u64, Error> {
+        sender.require_auth();
         Self::create_stream_inner(
             env,
             sender,
@@ -704,8 +707,11 @@ impl FluxoraStream {
         curve: ReleaseCurve,
     ) -> Result<u64, Error> {
         // Emergency halt (#1818): refuse state changes before anything else.
+        // Note: this inner helper does NOT call `require_auth` — each public
+        // wrapper auths exactly once (SDK 27 rejects a second auth for the
+        // same address in the same frame). `batch_create` auths once upfront
+        // then calls this N times via `create_stream_unchecked`.
         Self::require_not_halted(&env)?;
-        sender.require_auth();
 
         if sender == recipient {
             return Err(Error::SelfStream);
@@ -899,6 +905,8 @@ impl FluxoraStream {
         pausable: bool,
         transferable: bool,
     ) -> Result<u64, Error> {
+        // Auth once here; `create_stream_inner` does not auth (see above).
+        sender.require_auth();
         // Load policy from the factory contract via cross-contract calls.
         // `get_factory_config` and `is_allowlisted` are permissionless read
         // views — no auth is required or consumed.
@@ -1572,7 +1580,7 @@ impl FluxoraStream {
         storage::save_stream(env, stream_id, stream);
 
         if refund > 0 {
-            storage::debit_pool(&env, &token, refund)?;
+            storage::debit_pool(env, &token, refund)?;
             token_transfer(
                 env,
                 &token,
@@ -1584,7 +1592,7 @@ impl FluxoraStream {
         // Reconcile the pool now the refund has left it. Checked even when the
         // refund was zero: a rebase since the last operation on this token is
         // exactly as dangerous with nothing to refund.
-        verify_pool_balance(&env, &token)?;
+        verify_pool_balance(env, &token)?;
 
         // Issue #1584: the event's `vested` is read off the settled stream by
         // the helper (`stream.deposited`, set above), so it cannot disagree with
@@ -2236,11 +2244,7 @@ impl FluxoraStream {
     /// * [`Error::InvalidAmount`] — explicit amount is zero or negative.
     /// * [`Error::InvalidDestination`] — destination is the contract address.
     /// * [`Error::ContractHalted`] — contract-level emergency halt is engaged.
-    pub fn withdraw_to(
-        env: Env,
-        stream_id: u64,
-        destination: Address,
-    ) -> Result<i128, Error> {
+    pub fn withdraw_to(env: Env, stream_id: u64, destination: Address) -> Result<i128, Error> {
         // Emergency halt (#1818): refuse state changes before anything else.
         Self::require_not_halted(&env)?;
         let mut stream = storage::load_stream(&env, stream_id)?;
@@ -2325,7 +2329,7 @@ impl FluxoraStream {
         if withdrawals.is_empty() {
             return Err(Error::EmptyBatch);
         }
-        if withdrawals.len() > MAX_BATCH_SIZE as u32 {
+        if withdrawals.len() > MAX_BATCH_SIZE {
             return Err(Error::BatchTooLarge);
         }
 
